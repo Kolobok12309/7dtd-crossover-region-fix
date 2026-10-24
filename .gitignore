@@ -1,0 +1,6 @@
+bin/
+obj/
+mod/1_RegionFileFix/*.dll
+mod/1_RegionFileFix/*.pdb
+*.zip
+.DS_Store
