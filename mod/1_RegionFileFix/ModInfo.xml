@@ -2,8 +2,8 @@
 <xml>
 	<Name value="RegionFileFix" />
 	<DisplayName value="Region File Fix (CrossOver)" />
-	<Description value="Fixes FileNotFoundException on .7rg region files and freezes on save under CrossOver/Wine (false positive File.Exists)" />
+	<Description value="Fixes FileNotFoundException on .7rg region files, freezes on save and failing to rejoin servers (archived.flag) under CrossOver/Wine"  />
 	<Author value="Kolobok12309" />
-	<Version value="1.1.0" />
+	<Version value="1.2.0" />
 	<Website value="https://github.com/Kolobok12309/7dtd-crossover-region-fix" />
 </xml>

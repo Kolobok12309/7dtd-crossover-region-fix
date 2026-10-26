@@ -2,7 +2,7 @@
 
 [English version](README.md)
 
-Небольшой мод для **Windows-версии 7 Days to Die, запущенной через CrossOver / Wine на macOS**. Он исправляет сохранение, которое падает с бесконечными ошибками `FileNotFoundException`, и зависание игры по нажатию **Esc**.
+Небольшой мод для **Windows-версии 7 Days to Die, запущенной через CrossOver / Wine на macOS**. Он исправляет сохранение, которое падает с бесконечными ошибками `FileNotFoundException`, зависание игры по нажатию **Esc** и невозможность повторно зайти на сетевой сервер, где вы уже играли.
 
 ## Проверено на
 
@@ -13,6 +13,7 @@
 | macOS | 26.5.2 (Apple M1 Max) |
 | Undead Legacy | 2.7.40 (+ zHaardvin_Russian_Fixes 2.7.40), работают вместе |
 | Ванильная игра | работает |
+| Сетевая игра (клиент) | подключение к серверу друга с Undead Legacy работает |
 
 На других версиях игры мод, возможно, придётся пересобрать (см. [Сборка DLL](#сборка-dll)). На настоящей Windows мод ничего не меняет: там дополнительная проверка всегда согласна с игрой.
 
@@ -27,6 +28,14 @@
   ```
 - По **Esc** игра замирает: меню паузы запускает сохранение.
 - Папка `Region` в сейве остаётся пустой, изменения мира не сохраняются.
+- На сетевой сервер получается зайти один раз, а каждая следующая попытка обрывается после загрузки конфигов с ошибкой:
+  ```
+  ERR Exception creating local save dir: C:\users\crossover\AppData\Roaming/7DaysToDie\...\SavesLocal/<GUID> - GUID len: 32
+  EXC Unknown error (0x3204400) : '...\SavesLocal\<GUID>\archived.flag'
+    at System.IO.File.Delete (System.String path)
+    at SdFile.Delete (System.String path)
+    at GameManager+<worldInfoCo>d__196.MoveNext ()
+  ```
 
 Эту же ошибку сообщали на официальном форуме: [Unable to save region file when playing on MacOS crossover](https://community.thefunpimps.com/threads/unable-to-save-region-file-when-playing-on-macos-crossover.47164/).
 
@@ -49,15 +58,19 @@ Win32 API правильно сообщает, что файла нет (`INVALI
 
 Кроме файлов регионов `.7rg`, при тестах были затронуты `power.dat`, `vehicles.dat`, `drones.dat`, `turrets.dat` и `blockLimits.dat`.
 
+На той же ошибке ломается удаление несуществующего файла. В .NET `File.Delete` для файла, которого нет, должен просто ничего не делать. Когда вы заходите на сервер, для которого у вас уже есть папка локального кэша, игра всегда удаляет из неё `archived.flag` без проверки, есть ли он. Под CrossOver неудачный вызов Win32 возвращает мусорный код ошибки (`Unknown error (0x3204400)`, число каждый раз другое). Mono выбрасывает `IOException`, и подключение обрывается.
+
 ## Что делает мод
 
 1. **Harmony-постфикс на `SdFile.Exists`**, общий метод игры для проверки «есть ли файл». Когда игра получает ответ «есть», мод переспрашивает `GetFileAttributesW`. Ответ меняется на `false`, только если API говорит «нет» (код `0`, `2` или `3`) **и** файл действительно не открывается (`FileNotFoundException` / `DirectoryNotFoundException`). Тогда игра сама создаёт файл. Существующий файл никогда не объявляется отсутствующим, поэтому сохранения не перезапишутся по ошибке.
-2. **Запасной префикс на `RegionFileSectorBased.Get`**: если файл региона всё равно не открывается, мод создаёт его.
+2. **Harmony-финализатор на `SdFile.Delete`**: если удаление выбросило `IOException`, ошибка гасится, только когда файла действительно нет. Это значит, что `GetFileAttributesW` его не нашёл **и** его нет в списке содержимого родительской папки. Кодам ошибок мод не доверяет, потому что здесь они мусорные. Любая другая ошибка (нет доступа, файл занят) проходит дальше без изменений.
+3. **Запасной префикс на `RegionFileSectorBased.Get`**: если файл региона всё равно не открывается, мод создаёт его.
 
-Каждый исправленный случай один раз пишется в лог игры, максимум 50 строк:
+Каждый исправленный случай пишется в лог игры (максимум 50 строк на патч):
 
 ```
 WRN [RegionFileFix] SdFile.Exists ghost -> false: ...\Region/r.0.0.7rg (lastError=0)
+WRN [RegionFileFix] SdFile.Delete failed: ...\archived.flag (Unknown error (0x3abcf80) ...); GetFileAttributesW=0xFFFFFFFF lastError=61591424, not in directory listing -> file is missing, error ignored
 ```
 
 ## Установка
@@ -74,7 +87,7 @@ WRN [RegionFileFix] SdFile.Exists ghost -> false: ...\Region/r.0.0.7rg (lastErro
    - запуск **без EasyAntiCheat** (это требование любого DLL-мода).
 4. Запустите игру. В логе (`drive_c/users/crossover/AppData/Roaming/7DaysToDie/logs/output_log_client_*.txt`) должна появиться строка:
    ```
-   [RegionFileFix] patched RegionFileSectorBased.Get, SdFile.Exists
+   [RegionFileFix] patched RegionFileSectorBased.Get, SdFile.Exists, SdFile.Delete
    ```
    Поиграйте минуту. В папке `Region` сейва должны появиться файлы `.7rg`, а ошибки `Could not find file` должны пропасть.
 
